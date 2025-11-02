@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <!-- Interface locale de chat pour envoyer des messages vers le webhook http://localhost:5678/webhook/chat-local -->
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chat Local</title>
+    <style>
+      /* --------- Styles globaux --------- */
+      :root {
+        color-scheme: dark;
+        font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background-color: #121212;
+        color: #f5f5f5;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 16px;
+      }
+
+      .chat-wrapper {
+        width: 100%;
+        max-width: 600px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+      }
+
+      header {
+        padding: 20px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        font-size: 1.1rem;
+        font-weight: 600;
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0));
+      }
+
+      .messages {
+        flex: 1;
+        padding: 20px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        scroll-behavior: smooth;
+      }
+
+      .bubble {
+        max-width: 80%;
+        padding: 12px 16px;
+        border-radius: 16px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .bubble-user {
+        align-self: flex-end;
+        background: #2f80ed;
+        box-shadow: 0 4px 12px rgba(47, 128, 237, 0.35);
+        border-bottom-right-radius: 4px;
+        text-align: right;
+      }
+
+      .bubble-ai {
+        align-self: flex-start;
+        background: rgba(255, 255, 255, 0.08);
+        border-bottom-left-radius: 4px;
+        color: #f1f1f1;
+      }
+
+      .chat-form {
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 16px;
+        background: rgba(12, 12, 12, 0.6);
+      }
+
+      .input-row {
+        display: flex;
+        gap: 12px;
+      }
+
+      .input-row input[type="text"] {
+        flex: 1;
+        padding: 12px 16px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        background: rgba(255, 255, 255, 0.05);
+        color: #f5f5f5;
+        outline: none;
+        transition: border-color 0.2s ease, background 0.2s ease;
+      }
+
+      .input-row input[type="text"]:focus {
+        border-color: #2f80ed;
+        background: rgba(255, 255, 255, 0.08);
+      }
+
+      .input-row button {
+        padding: 12px 24px;
+        border-radius: 999px;
+        border: none;
+        background: #2f80ed;
+        color: #fff;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.1s ease, box-shadow 0.2s ease;
+      }
+
+      .input-row button:active {
+        transform: scale(0.98);
+      }
+
+      .input-row button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .status {
+        margin-top: 12px;
+        min-height: 20px;
+        font-size: 0.85rem;
+        color: #ffb4b4;
+      }
+
+      .typing-indicator {
+        display: inline-flex;
+        gap: 4px;
+        align-items: center;
+        justify-content: center;
+        padding: 8px 12px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.08);
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 0.95rem;
+      }
+
+      .typing-indicator span {
+        width: 6px;
+        height: 6px;
+        background: currentColor;
+        border-radius: 50%;
+        animation: bounce 1s infinite ease-in-out;
+      }
+
+      .typing-indicator span:nth-child(2) {
+        animation-delay: 0.15s;
+      }
+
+      .typing-indicator span:nth-child(3) {
+        animation-delay: 0.3s;
+      }
+
+      @keyframes bounce {
+        0%,
+        80%,
+        100% {
+          transform: scale(0.7);
+          opacity: 0.4;
+        }
+        40% {
+          transform: scale(1);
+          opacity: 1;
+        }
+      }
+
+      @media (max-width: 480px) {
+        header {
+          font-size: 1rem;
+        }
+
+        .input-row button {
+          padding: 12px 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- --------- Structure HTML --------- -->
+    <main class="chat-wrapper">
+      <header>Chat local &mdash; Webhook</header>
+
+      <section class="messages" id="messages" aria-live="polite"></section>
+
+      <form class="chat-form" id="chat-form" autocomplete="off">
+        <div class="input-row">
+          <label class="sr-only" for="chat-input">Message</label>
+          <input
+            id="chat-input"
+            type="text"
+            name="chatInput"
+            inputmode="text"
+            placeholder="Écrivez votre message..."
+            aria-label="Champ de saisie du message"
+            required
+          />
+          <button type="submit" id="send-button">Envoyer</button>
+        </div>
+        <div class="status" id="status" role="status" aria-live="assertive"></div>
+      </form>
+    </main>
+
+    <style>
+      /* Accessibilité : cacher visuellement tout en restant lisible par les lecteurs d'écran */
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+    </style>
+
+    <script>
+      // --------- Variables et sélecteurs ---------
+      const messagesContainer = document.getElementById("messages");
+      const chatForm = document.getElementById("chat-form");
+      const chatInput = document.getElementById("chat-input");
+      const status = document.getElementById("status");
+      const sendButton = document.getElementById("send-button");
+      const webhookURL = "http://localhost:5678/webhook/chat-local";
+
+      // --------- Fonctions utilitaires ---------
+      /**
+       * Crée une bulle de message sécurisée pour éviter les injections XSS.
+       * @param {string} content - Le texte à afficher.
+       * @param {"user" | "ai"} author - L'auteur du message pour le style.
+       */
+      function appendMessage(content, author) {
+        const bubble = document.createElement("div");
+        bubble.classList.add("bubble");
+        bubble.classList.add(author === "user" ? "bubble-user" : "bubble-ai");
+        bubble.textContent = content;
+        messagesContainer.appendChild(bubble);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      }
+
+      /**
+       * Affiche une animation "..." pendant l'attente de la réponse.
+       * @returns {HTMLElement} L'élément indicateur créé.
+       */
+      function showTypingIndicator() {
+        const indicator = document.createElement("div");
+        indicator.classList.add("bubble", "bubble-ai");
+
+        const typing = document.createElement("div");
+        typing.classList.add("typing-indicator");
+
+        // Ajoute trois points animés
+        for (let i = 0; i < 3; i += 1) {
+          typing.appendChild(document.createElement("span"));
+        }
+
+        indicator.appendChild(typing);
+        messagesContainer.appendChild(indicator);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        return indicator;
+      }
+
+      /**
+       * Supprime un élément DOM en toute sécurité.
+       * @param {HTMLElement} element - L'élément à retirer.
+       */
+      function removeElement(element) {
+        if (element && element.parentNode) {
+          element.parentNode.removeChild(element);
+        }
+      }
+
+      /**
+       * Affiche un message d'erreur dans la zone de statut.
+       * @param {string} message - Le message à montrer aux utilisateur·rices.
+       */
+      function displayError(message) {
+        status.textContent = message;
+      }
+
+      /**
+       * Réinitialise les indicateurs d'état après une requête.
+       */
+      function resetStatus() {
+        status.textContent = "";
+      }
+
+      // --------- Gestion des événements ---------
+      chatForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        resetStatus();
+
+        const userInput = chatInput.value.trim();
+
+        if (!userInput) {
+          displayError("Pas de réponse du serveur, veuillez réessayer.");
+          return;
+        }
+
+        appendMessage(userInput, "user");
+        chatInput.value = "";
+        chatInput.focus();
+
+        sendButton.disabled = true;
+
+        const typingIndicator = showTypingIndicator();
+
+        try {
+          const response = await fetch(webhookURL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ chatInput: userInput }),
+          });
+
+          removeElement(typingIndicator);
+
+          if (!response.ok) {
+            throw new Error("Requête échouée");
+          }
+
+          const serverText = await response.text();
+          const sanitizedText = serverText.trim() || "Pas de réponse du serveur, veuillez réessayer.";
+          appendMessage(sanitizedText, "ai");
+        } catch (error) {
+          removeElement(typingIndicator);
+          displayError("Pas de réponse du serveur, veuillez réessayer.");
+          appendMessage("Erreur : impossible de contacter le serveur.", "ai");
+        } finally {
+          sendButton.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
